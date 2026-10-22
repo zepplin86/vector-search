@@ -93,6 +93,7 @@ ANN 검색은 **항상 가장 가까운 k개**를 돌려줌. 관련 없어도 "�
 | `WHISPER_LANG` | ko | 비우면 자동 감지 |
 
 차원 바꾸면 `docker compose down -v` 후 재기동 (init.sql 재실행).
+`CLIP_SEC` / `FRAMES_PER_CLIP` / `CHUNK_SEC` 는 DB 스키마와 무관. 값 바꾸고 `docker compose up -d` 로 api 재기동 후 영상별 인덱싱 다시 실행 (기존 rows 는 재인덱싱 때 삭제 후 교체).
 
 ## 메모
 
