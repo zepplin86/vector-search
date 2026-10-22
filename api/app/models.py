@@ -9,7 +9,8 @@ from . import config
 
 torch.set_num_threads(max(1, torch.get_num_threads()))
 
-_lock = threading.Lock()
+# 모델별 락. 하나로 묶으면 warmup 이 Qwen 로드하는 동안 인덱싱의 visual() 까지 기다림.
+_vlock, _tlock, _alock = threading.Lock(), threading.Lock(), threading.Lock()
 _visual = None
 _text = None
 _asr = None
@@ -17,7 +18,7 @@ _asr = None
 
 def visual():
     global _visual
-    with _lock:
+    with _vlock:
         if _visual is None:
             import open_clip
 
@@ -32,7 +33,7 @@ def visual():
 
 def text_model():
     global _text
-    with _lock:
+    with _tlock:
         if _text is None:
             from sentence_transformers import SentenceTransformer
 
@@ -46,7 +47,7 @@ def text_model():
 
 def asr():
     global _asr
-    with _lock:
+    with _alock:
         if _asr is None:
             from faster_whisper import WhisperModel
 
@@ -61,13 +62,16 @@ def _l2(v: np.ndarray) -> np.ndarray:
 
 # ---------- 시각 ----------
 @torch.no_grad()
-def embed_images(paths: list[str], batch_size: int = 16) -> np.ndarray:
+def embed_images(paths: list[str], batch_size: int = 16, on_progress=None) -> np.ndarray:
+    """on_progress(done, total): 배치마다 호출 (진행률 표시용)."""
     model, preprocess, _ = visual()
     out = []
     for i in range(0, len(paths), batch_size):
         batch = torch.stack([preprocess(Image.open(p).convert("RGB")) for p in paths[i : i + batch_size]])
         v = model.encode_image(batch)
         out.append(v.float().cpu().numpy())
+        if on_progress:
+            on_progress(min(i + batch_size, len(paths)), len(paths))
     return _l2(np.concatenate(out, axis=0))
 
 
@@ -92,9 +96,16 @@ def embed_visual_image(path: str) -> np.ndarray:
 
 
 # ---------- 자막 ----------
-def embed_passages(texts: list[str]) -> np.ndarray:
+def embed_passages(texts: list[str], batch_size: int = 8, on_progress=None) -> np.ndarray:
+    """on_progress(done, total): 배치마다 호출 (진행률 표시용)."""
     m = text_model()
-    return np.asarray(m.encode(texts, normalize_embeddings=True, batch_size=8, convert_to_numpy=True))
+    out = []
+    for i in range(0, len(texts), batch_size):
+        out.append(np.asarray(m.encode(texts[i : i + batch_size], normalize_embeddings=True,
+                                       batch_size=batch_size, convert_to_numpy=True)))
+        if on_progress:
+            on_progress(min(i + batch_size, len(texts)), len(texts))
+    return np.concatenate(out, axis=0)
 
 
 def embed_text_query(query: str) -> np.ndarray:

@@ -105,6 +105,12 @@ def ingest_video(video_id: str, kind: str = "both"):
     return {"queued": kinds}
 
 
+@app.get("/api/progress")
+def progress():
+    """진행 중/대기/최근 완료 인덱싱 작업. UI 왼쪽아래 보드가 1초마다 폴링."""
+    return ingest.snapshot()
+
+
 @app.delete("/api/videos/{video_id}/index")
 def delete_index(video_id: str):
     with db.pool.connection() as conn:

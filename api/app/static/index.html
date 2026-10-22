@@ -63,6 +63,34 @@
   video { width:100%; max-height:260px; background:#000; border-radius:6px; }
   .now { color:var(--muted); font-size:12px; }
   .empty { color:var(--muted); padding:20px; grid-column:1/-1; }
+  /* 왼쪽아래 인덱싱 진행 보드 */
+  aside { padding-bottom:140px; }
+  .board { position:fixed; left:12px; bottom:12px; width:276px; z-index:50; background:#0b0d12; border:1px solid var(--line); border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,.5); font-size:11px; display:none; }
+  .board.on { display:block; }
+  .board .bh { display:flex; align-items:center; gap:6px; padding:6px 10px; border-bottom:1px solid var(--line); color:var(--muted); font-weight:600; cursor:pointer; user-select:none; }
+  .board .bh .dot { width:7px; height:7px; border-radius:50%; background:var(--warn); animation:pulse 1.2s infinite; }
+  .board .bh .dot.idle { background:var(--ok); animation:none; }
+  .board .bh .n { margin-left:auto; font-weight:400; }
+  .board.min .bb { display:none; }
+  .board .bb { max-height:220px; overflow:auto; padding:4px 0; }
+  .job { padding:5px 10px; border-bottom:1px solid #161a22; }
+  .job:last-child { border-bottom:none; }
+  .job .l1 { display:flex; gap:6px; align-items:center; }
+  .job .k { font-size:10px; padding:0 5px; border-radius:7px; border:1px solid var(--line); color:var(--muted); flex:none; }
+  .job .k.visual { color:#c084fc; border-color:#c084fc; }
+  .job .k.subtitle { color:var(--acc); border-color:var(--acc); }
+  .job .nm { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--fg); }
+  .job .pc { flex:none; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .job .l2 { display:flex; justify-content:space-between; color:var(--muted); margin-top:2px; gap:6px; }
+  .job .l2 .ph { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .job .bar { height:3px; background:#1c212c; border-radius:2px; margin-top:4px; overflow:hidden; }
+  .job .bar i { display:block; height:100%; background:var(--acc); transition:width .4s; }
+  .job.queued .bar i { background:#3a4150; }
+  .job.done .bar i { background:var(--ok); }
+  .job.error .bar i { background:var(--err); }
+  .job.error .l2 { color:var(--err); }
+  .job.queued { opacity:.7; }
+  @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.3 } }
 </style>
 </head>
 <body>
@@ -100,6 +128,10 @@
       <div class="now" id="now">재생 대기</div>
     </div>
   </main>
+  <div class="board" id="board">
+    <div class="bh" onclick="$('#board').classList.toggle('min')"><span class="dot" id="bdot"></span><span id="btitle">인덱싱</span><span class="n" id="bcount"></span></div>
+    <div class="bb" id="bjobs"></div>
+  </div>
   <aside class="debug">
     <div class="head"><span>pgvector 요청 / 응답</span><button onclick="toggleDebug()">숨기기</button></div>
     <div class="body" id="debug"><div class="empty">검색하면 임베딩 → SQL → 응답 rows → 병합 단계가 순서대로 표시됨.</div></div>
@@ -172,7 +204,46 @@ $('#upload').onchange = async e => {
 
 async function ingest(id, kind) {
   await fetch(`/api/videos/${encodeURIComponent(id)}/ingest?kind=${kind}`, { method:'POST' });
-  loadVideos();
+  loadVideos(); pollProgress(true);
+}
+
+// ---------- 왼쪽아래 인덱싱 진행 보드 ----------
+const KIND = { visual:'시각', subtitle:'자막' };
+const fmtDur = s => s == null ? '' : s < 60 ? `${Math.round(s)}s` : `${Math.floor(s/60)}m${String(Math.round(s%60)).padStart(2,'0')}s`;
+let pollTimer = null, lastFinished = new Set();
+async function pollProgress(now) {
+  clearTimeout(pollTimer);
+  let jobs = [];
+  try { jobs = await (await fetch('/api/progress')).json(); } catch {}
+  renderBoard(jobs);
+  // 완료/오류 새로 생기면 왼쪽 목록 상태 갱신
+  const fin = new Set(jobs.filter(j => j.status === 'done' || j.status === 'error').map(j => `${j.video_id}:${j.kind}:${j.finished}`));
+  if ([...fin].some(k => !lastFinished.has(k))) loadVideos();
+  lastFinished = fin;
+  const active = jobs.some(j => j.status === 'running' || j.status === 'queued');
+  pollTimer = setTimeout(pollProgress, active ? 1000 : 5000);
+}
+function renderBoard(jobs) {
+  const b = $('#board'); b.classList.toggle('on', jobs.length > 0);
+  if (!jobs.length) return;
+  const running = jobs.filter(j => j.status === 'running').length, queued = jobs.filter(j => j.status === 'queued').length;
+  $('#bdot').classList.toggle('idle', !running && !queued);
+  $('#btitle').textContent = running ? '인덱싱 진행 중' : queued ? '인덱싱 대기' : '인덱싱 완료';
+  $('#bcount').textContent = (running || queued) ? `${running} 진행 · ${queued} 대기` : '';
+  $('#bjobs').innerHTML = jobs.map(j => {
+    const pct = j.pct ?? 0;
+    let eta = '';
+    if (j.status === 'running' && j.phase_pct > 3 && j.phase_elapsed > 2) {
+      const left = j.phase_elapsed * (100 - j.phase_pct) / j.phase_pct; eta = `단계 남은 ~${fmtDur(left)}`;
+    }
+    const right = j.status === 'running' ? (eta || fmtDur(j.elapsed)) : j.status === 'done' ? `${fmtDur(j.elapsed)} 소요` : '';
+    const phase = j.status === 'queued' ? '대기' : `${j.phase_label || ''}${j.detail ? ' · ' + j.detail : ''}`;
+    return `<div class="job ${j.status}">
+      <div class="l1"><span class="k ${j.kind}">${KIND[j.kind] || j.kind}</span><span class="nm" title="${esc(j.video_id)}">${esc(j.video_id)}</span><span class="pc">${j.status === 'queued' ? '' : Math.round(pct) + '%'}</span></div>
+      <div class="l2"><span class="ph" title="${esc(phase)}">${esc(phase)}</span><span>${right}</span></div>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+    </div>`;
+  }).join('');
 }
 
 async function doSearch(e) {
@@ -220,7 +291,7 @@ function toggleDebug() {
   const l = $('.layout'); l.classList.toggle('nodebug');
   $('#dbgbtn').style.display = l.classList.contains('nodebug') ? '' : 'none';
 }
-const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const J = o => esc(JSON.stringify(o, null, 2));
 function block(kind, title, ms, inner, open) {
   return `<details class="step" ${open ? 'open' : ''}><summary><span class="kind ${kind}">${kind}</span>${esc(title)}<span class="ms">${ms != null ? ms + ' ms' : ''}</span></summary><div class="c">${inner}</div></details>`;
@@ -260,6 +331,7 @@ function play(id, start) {
   } else seek();
 }
 loadVideos();
+pollProgress();
 </script>
 </body>
 </html>

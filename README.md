@@ -50,6 +50,7 @@ cd desktop && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
 UI 왼쪽에서 영상별 **시각 인덱싱 / 자막 인덱싱** 클릭 → 상태 done 되면 검색.
+왼쪽아래 보드에 진행 중/대기 작업의 단계(모델 로드 → 프레임 추출/음성 인식 → 임베딩 → 저장)와 퍼센트가 1초 간격으로 표시됨 (`GET /api/progress`).
 
 ## 검색 API
 

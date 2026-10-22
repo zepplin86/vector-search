@@ -29,16 +29,28 @@ def duration(path: Path) -> float:
     return float(r.stdout.strip())
 
 
-def extract_frames(path: Path, fps: float, out_dir: Path) -> list[Path]:
-    """한 번의 ffmpeg 패스로 fps 간격 프레임 추출. i번째(0-base) 프레임 시각 ≈ i / fps."""
+def extract_frames(path: Path, fps: float, out_dir: Path, on_progress=None) -> list[Path]:
+    """한 번의 ffmpeg 패스로 fps 간격 프레임 추출. i번째(0-base) 프레임 시각 ≈ i / fps.
+
+    on_progress(sec): ffmpeg -progress 의 out_time 을 초 단위로 전달 (진행률 표시용).
+    """
     if out_dir.exists():
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True)
-    subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(path),
-         "-vf", f"fps={fps},scale=384:-2", "-q:v", "3", str(out_dir / "%06d.jpg")],
-        check=True,
-    )
+    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-nostats", "-progress", "pipe:1", "-i", str(path),
+           "-vf", f"fps={fps},scale=384:-2", "-q:v", "3", str(out_dir / "%06d.jpg")]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        # out_time_us / out_time_ms 둘 다 마이크로초 (ffmpeg 의 오래된 명명 버그)
+        if on_progress and (line.startswith("out_time_us=") or line.startswith("out_time_ms=")):
+            try:
+                on_progress(int(line.split("=", 1)[1]) / 1e6)
+            except ValueError:
+                pass
+    err = proc.stderr.read() if proc.stderr else ""
+    if proc.wait() != 0:
+        raise subprocess.CalledProcessError(proc.returncode, cmd, stderr=err)
     return sorted(out_dir.glob("*.jpg"))
 
 
