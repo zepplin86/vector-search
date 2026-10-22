@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="780" viewBox="0 0 1240 780" font-family="Apple SD Gothic Neo, Pretendard, Noto Sans KR, Helvetica, Arial, sans-serif" font-size="12" fill="#1f2937">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#374151"/>
+    </marker>
+  </defs>
+  <rect width="1240" height="780" fill="#ffffff"/>
+  <text x="620" y="36" text-anchor="middle" font-size="22" font-weight="700">claude-vector 시스템 구성도 — 영상/자막 벡터 검색 PoC</text>
+
+  <!-- 클라이언트 -->
+  <rect x="30" y="70" width="240" height="250" rx="10" fill="#fff7e6" stroke="#d97706" stroke-width="1.5"/>
+  <text x="150" y="92" text-anchor="middle" font-size="14" font-weight="700" fill="#92400e">클라이언트 (호스트)</text>
+  <rect x="50" y="108" width="200" height="66" rx="6" fill="#fff" stroke="#9ca3af"/>
+  <text x="150" y="132" text-anchor="middle" font-weight="700">브라우저</text>
+  <text x="150" y="152" text-anchor="middle" fill="#4b5563">http://localhost:8000</text>
+  <rect x="50" y="190" width="200" height="110" rx="6" fill="#fff" stroke="#9ca3af"/>
+  <text x="150" y="212" text-anchor="middle" font-weight="700">데스크톱 앱</text>
+  <text x="150" y="232" text-anchor="middle" fill="#4b5563">pywebview (WKWebView)</text>
+  <text x="150" y="250" text-anchor="middle" fill="#4b5563">desktop/app.py</text>
+  <text x="150" y="272" text-anchor="middle" fill="#4b5563">'영상 추가' → 파일 다이얼로그</text>
+  <text x="150" y="289" text-anchor="middle" fill="#4b5563">→ ./media 복사 (+ .srt/.vtt)</text>
+
+  <!-- api 컨테이너 -->
+  <rect x="310" y="70" width="570" height="560" rx="10" fill="#eef4ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="595" y="92" text-anchor="middle" font-size="14" font-weight="700" fill="#1e3a8a">api 컨테이너 · FastAPI + 모델 (CPU) · :8000</text>
+
+  <rect x="330" y="108" width="530" height="52" rx="6" fill="#fff" stroke="#9ca3af"/>
+  <text x="595" y="130" text-anchor="middle" font-weight="700">웹 UI (static/index.html) · 영상 목록 / 업로드 / 인덱싱 요청</text>
+  <text x="595" y="149" text-anchor="middle" fill="#4b5563">GET /api/videos · POST /api/videos/upload · POST /api/videos/{id}/ingest?kind=visual|subtitle|both</text>
+
+  <rect x="330" y="186" width="530" height="226" rx="6" fill="#fff" stroke="#9ca3af"/>
+  <text x="345" y="206" font-weight="700">인덱싱 워커 (queue.Queue + daemon thread) — 입력: /media/*.mp4 (+ 같은 이름 .srt/.vtt)</text>
+
+  <text x="345" y="232" font-size="11" fill="#6b7280" font-weight="700">시각</text>
+  <rect x="345" y="240" width="165" height="62" rx="5" fill="#f8fafc" stroke="#94a3b8"/>
+  <text x="427" y="260" text-anchor="middle">ffmpeg 프레임 추출</text>
+  <text x="427" y="277" text-anchor="middle" fill="#4b5563">CLIP_SEC=5 · 2프레임/클립</text>
+  <text x="427" y="293" text-anchor="middle" fill="#4b5563">평균 풀링 · 썸네일 저장</text>
+  <line x1="510" y1="271" x2="530" y2="271" stroke="#374151" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="532" y="240" width="160" height="62" rx="5" fill="#f8fafc" stroke="#94a3b8"/>
+  <text x="612" y="260" text-anchor="middle">SigLIP2 ViT-B-16</text>
+  <text x="612" y="277" text-anchor="middle" fill="#4b5563">open_clip · webli</text>
+  <text x="612" y="293" text-anchor="middle" fill="#4b5563">이미지 인코더</text>
+  <line x1="692" y1="271" x2="712" y2="271" stroke="#374151" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="714" y="240" width="130" height="62" rx="5" fill="#dbeafe" stroke="#60a5fa"/>
+  <text x="779" y="265" text-anchor="middle" font-weight="700">vector(768)</text>
+  <text x="779" y="284" text-anchor="middle" fill="#4b5563">+ start/end/thumb</text>
+
+  <text x="345" y="328" font-size="11" fill="#6b7280" font-weight="700">자막</text>
+  <rect x="345" y="336" width="165" height="62" rx="5" fill="#f8fafc" stroke="#94a3b8"/>
+  <text x="427" y="356" text-anchor="middle">.srt/.vtt 있으면 파싱</text>
+  <text x="427" y="373" text-anchor="middle" fill="#4b5563">없으면 faster-whisper</text>
+  <text x="427" y="389" text-anchor="middle" fill="#4b5563">small · ko</text>
+  <line x1="510" y1="367" x2="530" y2="367" stroke="#374151" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="532" y="336" width="160" height="62" rx="5" fill="#f8fafc" stroke="#94a3b8"/>
+  <text x="612" y="356" text-anchor="middle">45초 청크 (CHUNK_SEC)</text>
+  <text x="612" y="373" text-anchor="middle" fill="#4b5563">Qwen3-Embedding-0.6B</text>
+  <text x="612" y="389" text-anchor="middle" fill="#4b5563">sentence-transformers</text>
+  <line x1="692" y1="367" x2="712" y2="367" stroke="#374151" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="714" y="336" width="130" height="62" rx="5" fill="#dbeafe" stroke="#60a5fa"/>
+  <text x="779" y="361" text-anchor="middle" font-weight="700">vector(1024)</text>
+  <text x="779" y="380" text-anchor="middle" fill="#4b5563">+ start/end/text</text>
+
+  <rect x="330" y="436" width="530" height="176" rx="6" fill="#fff" stroke="#9ca3af"/>
+  <text x="345" y="456" font-weight="700">검색 API — 질의를 같은 모델로 임베딩 → pgvector cosine top-k → 점수 컷</text>
+  <text x="345" y="482"><tspan font-weight="700">POST /api/search/visual</tspan>  텍스트 or 이미지 → SigLIP2 → clip_embeddings</text>
+  <text x="365" y="499" fill="#4b5563">점수 = sigmoid(logit_scale·cos + logit_bias) · min_score 0.10</text>
+  <text x="345" y="523"><tspan font-weight="700">POST /api/search/subtitle</tspan>  텍스트 → Qwen3 → subtitle_chunks · cosine · min 0.35</text>
+  <text x="345" y="547"><tspan font-weight="700">POST /api/search/hybrid</tspan>  둘 다 실행 → RRF (k=60) 병합 → 영상·구간 단위 정렬</text>
+  <text x="345" y="571" fill="#4b5563">응답 {results[], trace{request, total_ms, steps[]: 임베딩·SQL·rows·RRF}} → UI 우측 패널</text>
+  <text x="345" y="595" fill="#4b5563">결과 클릭 → 해당 구간(start_sec)으로 재생 · 썸네일 /data 에서 서빙</text>
+
+  <!-- db 컨테이너 -->
+  <rect x="920" y="70" width="290" height="560" rx="10" fill="#eefbf0" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="1065" y="92" text-anchor="middle" font-size="14" font-weight="700" fill="#14532d">db 컨테이너 · pgvector/pgvector:pg17 · :5433</text>
+  <rect x="940" y="108" width="250" height="70" rx="6" fill="#fff" stroke="#9ca3af"/>
+  <text x="1065" y="130" text-anchor="middle" font-weight="700">videos</text>
+  <text x="1065" y="148" text-anchor="middle" fill="#4b5563">id(파일명), duration</text>
+  <text x="1065" y="165" text-anchor="middle" fill="#4b5563">visual_status / subtitle_status / count</text>
+
+  <rect x="940" y="216" width="250" height="110" rx="6" fill="#fff" stroke="#9ca3af"/>
+  <text x="1065" y="238" text-anchor="middle" font-weight="700">clip_embeddings</text>
+  <text x="1065" y="257" text-anchor="middle" fill="#4b5563">video_id, start_sec, end_sec, thumb_path</text>
+  <text x="1065" y="276" text-anchor="middle" font-weight="700" fill="#1d4ed8">embedding vector(768)</text>
+  <text x="1065" y="295" text-anchor="middle" fill="#4b5563">HNSW · vector_cosine_ops</text>
+  <text x="1065" y="312" text-anchor="middle" fill="#4b5563">btree (video_id, start_sec)</text>
+
+  <rect x="940" y="346" width="250" height="110" rx="6" fill="#fff" stroke="#9ca3af"/>
+  <text x="1065" y="368" text-anchor="middle" font-weight="700">subtitle_chunks</text>
+  <text x="1065" y="387" text-anchor="middle" fill="#4b5563">video_id, start_sec, end_sec, text</text>
+  <text x="1065" y="406" text-anchor="middle" font-weight="700" fill="#1d4ed8">embedding vector(1024)</text>
+  <text x="1065" y="425" text-anchor="middle" fill="#4b5563">HNSW · vector_cosine_ops</text>
+  <text x="1065" y="442" text-anchor="middle" fill="#4b5563">btree (video_id, start_sec)</text>
+
+  <text x="1065" y="490" text-anchor="middle" fill="#4b5563">스키마: db/init.sql (초기 1회)</text>
+  <text x="1065" y="508" text-anchor="middle" fill="#4b5563">데이터: pgdata 볼륨</text>
+  <text x="1065" y="540" text-anchor="middle" fill="#4b5563" font-size="11">시각/자막은 별도 테이블·별도 모델·별도 차원</text>
+  <text x="1065" y="557" text-anchor="middle" fill="#4b5563" font-size="11">통합은 SQL이 아니라 앱 레벨 RRF</text>
+
+  <!-- 화살표: 클라이언트 → api -->
+  <line x1="250" y1="141" x2="328" y2="134" stroke="#374151" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="289" y="124" text-anchor="middle" font-size="11" fill="#374151">HTTP</text>
+  <line x1="250" y1="230" x2="328" y2="150" stroke="#374151" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="300" y="200" text-anchor="middle" font-size="11" fill="#374151">HTTP</text>
+
+  <!-- 화살표: UI → 워커 enqueue -->
+  <line x1="595" y1="160" x2="595" y2="184" stroke="#374151" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="640" y="177" text-anchor="middle" font-size="11" fill="#374151">enqueue</text>
+
+  <!-- 화살표: 벡터 → db INSERT -->
+  <line x1="844" y1="271" x2="938" y2="271" stroke="#374151" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="891" y="263" text-anchor="middle" font-size="11" fill="#374151">INSERT</text>
+  <line x1="844" y1="367" x2="938" y2="401" stroke="#374151" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="891" y="376" text-anchor="middle" font-size="11" fill="#374151">INSERT</text>
+
+  <!-- 화살표: 검색 ↔ db -->
+  <line x1="860" y1="524" x2="938" y2="524" stroke="#374151" stroke-width="1.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="899" y="512" text-anchor="middle" font-size="11" fill="#374151">ORDER BY</text>
+  <text x="899" y="541" text-anchor="middle" font-size="11" fill="#374151">emb &lt;=&gt; $q LIMIT k</text>
+
+  <!-- 화살표: 데스크톱 → media -->
+  <line x1="150" y1="300" x2="150" y2="672" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+  <text x="160" y="500" font-size="11" fill="#6b7280">mp4 복사</text>
+  <!-- 화살표: media → 워커 -->
+  <line x1="320" y1="672" x2="320" y2="414" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+  <text x="327" y="658" font-size="11" fill="#6b7280">읽기</text>
+
+  <!-- 볼륨 -->
+  <rect x="30" y="674" width="1180" height="86" rx="10" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"/>
+  <text x="50" y="696" font-size="14" font-weight="700" fill="#374151">볼륨 / 마운트 (docker-compose.yml, project name: claude-vector)</text>
+  <text x="50" y="720"><tspan font-weight="700">./media</tspan> → /media (영상·자막 bind)   ·   <tspan font-weight="700">./api/app</tspan> → /srv/app (코드 bind)   ·   <tspan font-weight="700">appdata</tspan> → /data (썸네일)</text>
+  <text x="50" y="744"><tspan font-weight="700">hfcache</tspan> → /root/.cache (HF 모델 캐시 ~2GB, SigLIP2·Qwen3·Whisper)   ·   <tspan font-weight="700">pgdata</tspan> → PostgreSQL 데이터</text>
+</svg>

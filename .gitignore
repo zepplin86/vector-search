@@ -1,0 +1,30 @@
+# 영상/자막 (용량 큼) — 디렉토리 구조만 유지
+media/*
+!media/.gitkeep
+
+# 영상 파일은 위치 무관 제외 (api/app, desktop 등에 둔 테스트 파일 포함)
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.m4v
+*.avi
+
+# api 를 호스트에서 직접 실행할 때 생기는 산출물 (DATA_DIR, 썸네일)
+data/
+api/data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 로컬 설정
+.env
+docker-compose.override.yml
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store

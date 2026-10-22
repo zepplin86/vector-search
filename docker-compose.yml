@@ -1,0 +1,53 @@
+name: claude-vector
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: vec
+      POSTGRES_PASSWORD: vec
+      POSTGRES_DB: vec
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vec -d vec"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build: ./api
+    environment:
+      DATABASE_URL: postgresql://vec:vec@db:5432/vec
+      MEDIA_DIR: /media
+      DATA_DIR: /data
+      # 시각 임베딩 (open_clip). SigLIP2 = 다국어 텍스트 질의 지원, 768차원
+      VISUAL_MODEL: ViT-B-16-SigLIP2
+      VISUAL_PRETRAINED: webli
+      # 자막 임베딩 (sentence-transformers). 1024차원
+      TEXT_MODEL: Qwen/Qwen3-Embedding-0.6B
+      # ASR
+      WHISPER_MODEL: small
+      WHISPER_LANG: ko
+      # 분할 파라미터
+      CLIP_SEC: "5"
+      FRAMES_PER_CLIP: "2"
+      CHUNK_SEC: "45"
+      OMP_NUM_THREADS: "4"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./media:/media
+      - ./api/app:/srv/app
+      - appdata:/data
+      - hfcache:/root/.cache
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  appdata:
+  hfcache:

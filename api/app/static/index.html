@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video Vector Search PoC</title>
+<style>
+  :root { --bg:#0f1115; --panel:#181b22; --line:#2a2f3a; --fg:#e6e8ee; --muted:#8b93a7; --acc:#4f8cff; --ok:#3ccf7a; --warn:#f5b642; --err:#ff5c5c; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+  .layout { display:grid; grid-template-columns:300px 1fr 420px; height:100vh; }
+  .layout.nodebug { grid-template-columns:300px 1fr; }
+  .layout.nodebug .debug { display:none; }
+  .debug { border-left:1px solid var(--line); background:#0b0d12; display:flex; flex-direction:column; min-height:0; }
+  .debug .head { padding:10px 12px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-size:12px; font-weight:600; }
+  .debug .body { overflow:auto; padding:10px 12px; font-size:12px; }
+  .step { border:1px solid var(--line); border-radius:6px; margin-bottom:8px; background:var(--panel); }
+  .step summary { cursor:pointer; padding:7px 10px; font-weight:600; display:flex; gap:8px; align-items:center; }
+  .step summary .ms { margin-left:auto; color:var(--muted); font-weight:400; }
+  .step .kind { font-size:10px; padding:1px 6px; border-radius:8px; border:1px solid var(--line); color:var(--muted); text-transform:uppercase; }
+  .step .kind.embed { color:#c084fc; border-color:#c084fc; }
+  .step .kind.pgvector { color:var(--acc); border-color:var(--acc); }
+  .step .kind.rrf_merge { color:var(--ok); border-color:var(--ok); }
+  .step .kind.request, .step .kind.response { color:var(--warn); border-color:var(--warn); }
+  .step .c { padding:0 10px 8px; }
+  .step .lbl { color:var(--muted); margin:6px 0 2px; }
+  pre { margin:0; background:#06080c; border:1px solid var(--line); border-radius:4px; padding:8px; overflow:auto; font:11px/1.4 ui-monospace, Menlo, monospace; color:#d6dbe6; white-space:pre-wrap; word-break:break-all; max-height:260px; }
+  pre.sql { color:#9ecbff; }
+  .debug .empty { padding:0; }
+  aside { border-right:1px solid var(--line); background:var(--panel); padding:14px; overflow:auto; }
+  main { display:grid; grid-template-rows:auto auto 1fr auto; min-height:0; }
+  h1 { font-size:15px; margin:0 0 12px; color:var(--muted); font-weight:600; letter-spacing:.3px; }
+  .vid { border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:8px; }
+  .vid .name { font-weight:600; word-break:break-all; }
+  .vid .meta { color:var(--muted); font-size:12px; margin:4px 0 6px; }
+  .badge { display:inline-block; padding:1px 7px; border-radius:10px; font-size:11px; margin-right:4px; border:1px solid var(--line); color:var(--muted); }
+  .badge.done { color:var(--ok); border-color:var(--ok); }
+  .badge.running, .badge.queued { color:var(--warn); border-color:var(--warn); }
+  .badge.error { color:var(--err); border-color:var(--err); }
+  .vid .err { color:var(--err); font-size:11px; margin-top:4px; white-space:pre-wrap; }
+  button { background:#232835; color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:5px 10px; cursor:pointer; font-size:12px; }
+  button:hover { border-color:var(--acc); }
+  button.primary { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .tabs { display:flex; gap:4px; padding:12px 16px 0; border-bottom:1px solid var(--line); }
+  .tab { padding:8px 14px; border:1px solid transparent; border-bottom:none; border-radius:8px 8px 0 0; cursor:pointer; color:var(--muted); }
+  .tab.active { background:var(--panel); border-color:var(--line); color:var(--fg); }
+  .search { display:flex; gap:8px; padding:12px 16px; align-items:center; flex-wrap:wrap; background:var(--panel); border-bottom:1px solid var(--line); }
+  .search input[type=text] { flex:1; min-width:240px; padding:8px 10px; background:#0f1115; border:1px solid var(--line); border-radius:6px; color:var(--fg); font-size:14px; }
+  .minlbl { color:var(--muted); font-size:12px; display:flex; align-items:center; gap:4px; }
+  .minlbl input { width:62px; padding:5px; background:#0f1115; border:1px solid var(--line); border-radius:6px; color:var(--fg); }
+  .search select { padding:7px; background:#0f1115; border:1px solid var(--line); border-radius:6px; color:var(--fg); }
+  .hint { color:var(--muted); font-size:12px; width:100%; }
+  .results { overflow:auto; padding:12px 16px; display:grid; grid-template-columns:repeat(auto-fill, minmax(260px,1fr)); gap:10px; align-content:start; }
+  .card { border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--panel); cursor:pointer; }
+  .card:hover { border-color:var(--acc); }
+  .card img { width:100%; aspect-ratio:16/9; object-fit:cover; background:#000; display:block; }
+  .card .noimg { width:100%; aspect-ratio:16/9; background:#0b0d12; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:12px; }
+  .card .body { padding:8px 10px; }
+  .card .t { font-weight:600; font-size:13px; }
+  .card .s { color:var(--muted); font-size:12px; }
+  .card .txt { font-size:12px; margin-top:4px; max-height:3.6em; overflow:hidden; color:#c9cfdc; }
+  .player { border-top:1px solid var(--line); background:var(--panel); padding:10px 16px; display:grid; grid-template-columns:1fr 360px; gap:12px; align-items:center; }
+  video { width:100%; max-height:260px; background:#000; border-radius:6px; }
+  .now { color:var(--muted); font-size:12px; }
+  .empty { color:var(--muted); padding:20px; grid-column:1/-1; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside>
+    <h1>영상 (./media)</h1>
+    <div id="videos"></div>
+    <div style="margin-top:10px; display:flex; gap:6px; flex-wrap:wrap">
+      <button class="primary" onclick="addVideo()">영상 추가</button>
+      <button onclick="loadVideos()">새로고침</button>
+      <input type="file" id="upload" accept=".mp4,.mov,.mkv,.webm,.m4v,.srt,.vtt" multiple style="display:none">
+    </div>
+    <div class="hint" id="addmsg" style="margin-top:6px"></div>
+  </aside>
+  <main>
+    <div class="tabs">
+      <div class="tab active" data-tab="visual">영상(시각)</div>
+      <div class="tab" data-tab="subtitle">자막</div>
+      <div class="tab" data-tab="hybrid">통합</div>
+      <button id="dbgbtn" style="margin-left:auto; display:none" onclick="toggleDebug()">pgvector 패널</button>
+    </div>
+    <form class="search" id="form" onsubmit="return doSearch(event)">
+      <input type="text" id="q" placeholder="예: 강아지가 뛰는 장면 / 환불 정책 설명하는 부분" autocomplete="off">
+      <input type="file" id="img" accept="image/*" style="display:none">
+      <select id="vid"><option value="">전체 영상</option></select>
+      <select id="k"><option>10</option><option selected>20</option><option>40</option></select>
+      <label class="minlbl" title="SigLIP 매칭 확률 p=sigmoid(scale·cos+bias). 이 값 미만 제외. 0 = 전부 표시">시각 p≥ <input type="number" id="minv" value="0.10" step="0.05" min="0" max="1"></label>
+      <label class="minlbl" title="이 점수 미만 결과 제외. 0 = 전부 표시">자막≥ <input type="number" id="mins" value="0.35" step="0.05" min="0" max="1"></label>
+      <button class="primary" type="submit">검색</button>
+      <div class="hint" id="hint"></div>
+    </form>
+    <div class="results" id="results"><div class="empty">검색어 입력. 결과 클릭 → 해당 구간 재생.</div></div>
+    <div class="player">
+      <video id="player" controls preload="metadata"></video>
+      <div class="now" id="now">재생 대기</div>
+    </div>
+  </main>
+  <aside class="debug">
+    <div class="head"><span>pgvector 요청 / 응답</span><button onclick="toggleDebug()">숨기기</button></div>
+    <div class="body" id="debug"><div class="empty">검색하면 임베딩 → SQL → 응답 rows → 병합 단계가 순서대로 표시됨.</div></div>
+  </aside>
+</div>
+<script>
+let tab = 'visual';
+const $ = s => document.querySelector(s);
+const fmt = s => { s = Math.max(0, Math.floor(s)); const m = Math.floor(s/60), r = s%60; return `${m}:${String(r).padStart(2,'0')}`; };
+const HINT = {
+  visual: '프레임 임베딩(SigLIP2). 텍스트 또는 이미지 질의. ANN은 항상 k개 반환 → 매칭 확률 p 로 컷. 이미지 질의는 cos 그대로(p 의미 없음, 0으로).',
+  subtitle: '자막 임베딩(Qwen3-Embedding). 말한 내용 기준. "자막≥" 점수 미만 제외.',
+  hybrid: '시각 + 자막 각각 top-50 → 점수 컷 → RRF 합산.',
+};
+
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active'); tab = t.dataset.tab;
+  $('#img').style.display = tab === 'visual' ? '' : 'none';
+  $('#hint').textContent = HINT[tab];
+});
+$('#img').style.display = '';
+$('#hint').textContent = HINT.visual;
+
+async function loadVideos() {
+  const r = await fetch('/api/videos'); const vs = await r.json();
+  const box = $('#videos'); box.innerHTML = '';
+  const sel = $('#vid'); const cur = sel.value; sel.innerHTML = '<option value="">전체 영상</option>';
+  if (!vs.length) box.innerHTML = '<div class="hint">./media 에 mp4 넣고 새로고침.</div>';
+  let busy = false;
+  for (const v of vs) {
+    busy ||= ['queued','running'].includes(v.visual_status) || ['queued','running'].includes(v.subtitle_status);
+    const d = document.createElement('div'); d.className = 'vid';
+    d.innerHTML = `
+      <div class="name">${v.id}</div>
+      <div class="meta">${v.duration ? fmt(v.duration) : '-'}
+        <span class="badge ${v.visual_status}">시각 ${v.visual_status}${v.visual_count ? ' · '+v.visual_count : ''}</span>
+        <span class="badge ${v.subtitle_status}">자막 ${v.subtitle_status}${v.subtitle_count ? ' · '+v.subtitle_count : ''}</span>
+      </div>
+      <button onclick="ingest('${v.id}','visual')">시각 인덱싱</button>
+      <button onclick="ingest('${v.id}','subtitle')">자막 인덱싱</button>
+      <button onclick="ingest('${v.id}','both')">둘 다</button>
+      ${v.error ? `<div class="err">${v.error}</div>` : ''}`;
+    box.appendChild(d);
+    const o = document.createElement('option'); o.value = v.id; o.textContent = v.id; sel.appendChild(o);
+  }
+  sel.value = cur;
+  if (busy) setTimeout(loadVideos, 3000);
+}
+async function addVideo() {
+  const msg = $('#addmsg');
+  if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_video) {
+    msg.textContent = '파일 선택 중…';
+    const r = await window.pywebview.api.pick_video();
+    msg.textContent = r.error ? '오류: ' + r.error : (r.added.length ? '추가됨: ' + r.added.join(', ') : '취소');
+    loadVideos(); return;
+  }
+  $('#upload').click();
+}
+$('#upload').onchange = async e => {
+  const msg = $('#addmsg');
+  for (const f of e.target.files) {
+    msg.textContent = `업로드 중: ${f.name}`;
+    const fd = new FormData(); fd.append('file', f);
+    const r = await fetch('/api/videos/upload', { method:'POST', body: fd });
+    msg.textContent = r.ok ? `추가됨: ${f.name}` : `오류: ${await r.text()}`;
+  }
+  e.target.value = ''; loadVideos();
+};
+
+async function ingest(id, kind) {
+  await fetch(`/api/videos/${encodeURIComponent(id)}/ingest?kind=${kind}`, { method:'POST' });
+  loadVideos();
+}
+
+async function doSearch(e) {
+  e.preventDefault();
+  const q = $('#q').value.trim(), vid = $('#vid').value, k = +$('#k').value;
+  const minv = +$('#minv').value || 0, mins = +$('#mins').value || 0;
+  const img = $('#img').files[0];
+  const box = $('#results'); box.innerHTML = '<div class="empty">검색 중…</div>';
+  let res;
+  try {
+    if (tab === 'visual') {
+      const fd = new FormData(); fd.append('query', q); fd.append('video_id', vid); fd.append('k', k); fd.append('min_score', minv);
+      if (img) fd.append('image', img);
+      res = await fetch('/api/search/visual', { method:'POST', body: fd });
+    } else {
+      res = await fetch(`/api/search/${tab}`, { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ query: q, video_id: vid || null, k, min_visual: minv, min_subtitle: mins }) });
+    }
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    render(data.results);
+    renderTrace(data.trace, data.results);
+  } catch (err) { box.innerHTML = `<div class="empty" style="color:var(--err)">${err.message}</div>`; }
+  return false;
+}
+
+function render(items) {
+  const box = $('#results'); box.innerHTML = '';
+  if (!items.length) { box.innerHTML = '<div class="empty">결과 없음. 인덱싱 됐는지, 점수 컷(시각≥/자막≥)이 너무 높은지 확인. 우측 패널 rows 에서 실제 점수 확인 가능.</div>'; return; }
+  for (const it of items) {
+    const c = document.createElement('div'); c.className = 'card';
+    c.innerHTML = `
+      ${it.thumb ? `<img src="/thumbs/${it.thumb}" loading="lazy">` : `<div class="noimg">자막 구간</div>`}
+      <div class="body">
+        <div class="t">${fmt(it.start)} – ${fmt(it.end)} <span class="badge">${it.source}</span></div>
+        <div class="s">${it.video_id} · ${it.cosine != null ? `p ${it.score.toFixed(3)} (cos ${it.cosine.toFixed(3)})` : `score ${it.score.toFixed(3)}`}</div>
+        ${it.text ? `<div class="txt">${it.text}</div>` : ''}
+      </div>`;
+    c.onclick = () => play(it.video_id, it.start);
+    box.appendChild(c);
+  }
+}
+
+function toggleDebug() {
+  const l = $('.layout'); l.classList.toggle('nodebug');
+  $('#dbgbtn').style.display = l.classList.contains('nodebug') ? '' : 'none';
+}
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const J = o => esc(JSON.stringify(o, null, 2));
+function block(kind, title, ms, inner, open) {
+  return `<details class="step" ${open ? 'open' : ''}><summary><span class="kind ${kind}">${kind}</span>${esc(title)}<span class="ms">${ms != null ? ms + ' ms' : ''}</span></summary><div class="c">${inner}</div></details>`;
+}
+function renderTrace(tr, results) {
+  const box = $('#debug'); if (!tr) return;
+  let h = block('request', tr.request.endpoint, null, `<div class="lbl">body</div><pre>${J(tr.request)}</pre>`, true);
+  for (const st of tr.steps) {
+    if (st.step === 'embed') {
+      h += block('embed', `${st.target} 질의 임베딩`, st.ms,
+        `<div class="lbl">model</div><pre>${esc(st.model)}</pre><div class="lbl">vector</div><pre>${J(st.vector)}</pre>`, true);
+    } else if (st.step === 'pgvector') {
+      h += block('pgvector', `${st.table} ← ${st.row_count} rows, score≥${st.min_score} 통과 ${st.kept}`, st.ms,
+        `<div class="lbl">SQL (psycopg, %(name)s 바인딩)</div><pre class="sql">${esc(st.sql)}</pre>
+         <div class="lbl">params</div><pre>${J(st.params)}</pre>
+         <div class="lbl">rows [${st.columns.join(', ')}]</div><pre>${J(st.rows)}</pre>
+         <div class="lbl">note</div><pre>${esc(st.note)}</pre>`, true);
+    } else if (st.step === 'rrf_merge') {
+      h += block('rrf_merge', `RRF 병합 → ${st.buckets} buckets`, st.ms,
+        `<div class="lbl">formula</div><pre>${esc(st.formula)}</pre>
+         <div class="lbl">contributions (source, rank → rrf)</div><pre>${J(st.contributions)}</pre>
+         <div class="lbl">merged</div><pre>${J(st.merged)}</pre>`, true);
+    } else h += block(st.step, st.step, st.ms, `<pre>${J(st)}</pre>`);
+  }
+  h += block('response', `results (${results.length})`, tr.total_ms, `<pre>${J(results)}</pre>`, false);
+  box.innerHTML = h;
+}
+
+let curVideo = null;
+function play(id, start) {
+  const p = $('#player');
+  $('#now').textContent = `${id} @ ${fmt(start)}`;
+  const seek = () => { p.currentTime = start; p.play().catch(()=>{}); };
+  if (curVideo !== id) {
+    curVideo = id; p.src = `/media/${encodeURIComponent(id)}`;
+    p.addEventListener('loadedmetadata', seek, { once:true });
+  } else seek();
+}
+loadVideos();
+</script>
+</body>
+</html>
